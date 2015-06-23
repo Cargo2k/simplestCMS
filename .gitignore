@@ -1,0 +1,22 @@
+#build files by extention
+*.o 
+
+#autogen files by extention
+*.m4
+*.cache
+*.log
+*.in
+
+#autogen files by name with wildcard extentions
+config.*
+
+#explicit autogen files
+depcomp
+install-sh
+Makefile
+missing
+stamp-h1
+
+#files to ignore
+*/.deps
+ 
