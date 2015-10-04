@@ -1,4 +1,5 @@
 #build files by extention
+simpleCMS
 *.o 
 
 #autogen files by extention
@@ -20,3 +21,11 @@ stamp-h1
 #files to ignore
 */.deps
  
+#ide files to ignore
+.vscode
+.vscode/*
+
+# build dir and it's contents
+./build
+./build/*
+
