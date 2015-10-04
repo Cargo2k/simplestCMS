@@ -26,6 +26,5 @@ stamp-h1
 .vscode/*
 
 # build dir and it's contents
-./build
-./build/*
-
+build
+build/*

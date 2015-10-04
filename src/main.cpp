@@ -1,27 +1,29 @@
 #include <string>
+#include <sstream>
 #include <iostream>
+#include <boost/regex.hpp>
 
 //#include <fcgi_stdio.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
-
 #include <mstch/mstch.hpp> 
+
+#include "markdown.h"
 
 int pagesServed = 0;
 
 int initalize(void);
 void printTree(xmlNodePtr inNode, uint nestLevel);
 void mstchTest();
+void markdownTest();
 
 int main(int argc, char* argv[])
-{
-    initalize();
-    
-    mstchTest();
-    
-//    while (FCGI_Accept() >= 0) {
-
-//    }
+{    
+    while (FCGI_Accept() >= 0) {
+        print_header();
+        print_body();
+        print_close();
+    }
     return 0;
 }
 
@@ -72,4 +74,23 @@ void mstchTest() {
     };
     
     std::cout << mstch::render(tmpl, content) << std::endl;
+    
+}
+
+void markdownTest() {
+    std::string md = "# header 1\n## header 2\n some content\n*italic content* **and bold**\n * list item 1\n * item 2 \n * item 3\n";
+    std::stringstream outStream;
+    std::string out;
+    markdown::Document doc;
+    doc.read(md);
+    
+    doc.write(outStream);
+    std::cout << md << std::endl;
+    
+    outStream >> out;
+    do { 
+        std::cout << out << " ";
+        outStream >> out;
+    } while (outStream.good());
+    std::cout << std::endl;
 }
