@@ -1,16 +1,17 @@
 # simplestCMS
-an attempt at the simplest (to use) cms possible
+An attempt at the simplest (to use) cms possible.
 
 ## Overview
-This is another concept project, it is probably never going to be production ready.  It is also going to develop very slow
+This is another concept project, it is probably never going to be production ready.
 
 ## Setup
-currently all the paths are hard code
+Currently all the paths are hard coded.
  * webRoot - should be the web root of the web server, plan to output composited pages into the tree.  Default path /var/www/html. 
  * dataRoot - root of the input directory currently coded to /var/www/html-data
  * msgLogPath - an output location for log messages, currently /var/log/simplestCMS/message.log
-two other files need to run in it's current state are 
- * *dataRoot*/themes/default/template.mstch this is the html template for the CMS
+
+There are 2 files needed to run.
+ * *dataRoot*/themes/default/template.mstch - this is the html template for the CMS
 ```
 <html>
 <body>
@@ -20,7 +21,7 @@ two other files need to run in it's current state are
 </body>
 </html>
 ```
- * *dataRoot*/index.md a sample markdown to generate the rendered page from
+ * *dataRoot*/index.md - a sample markdown to generate the rendered page from
 ```
 <!--
 title=Index
@@ -34,6 +35,7 @@ this is the index page
 ## Usage
  * configure the source with cmake
  * compile
+ * make sure the files above are in place
  * configure your web server to see the fastcgi program
  * spawn the fastcgi process
  * visit the page 
