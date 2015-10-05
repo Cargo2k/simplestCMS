@@ -28,3 +28,6 @@ stamp-h1
 # build dir and it's contents
 build
 build/*
+vm-build
+vm-build/*
+
