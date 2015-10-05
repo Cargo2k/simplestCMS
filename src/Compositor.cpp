@@ -1,5 +1,7 @@
 #include <Compositor.h>
 
+void logMessage(std::string message);
+
 Compositor::Compositor() {}
 
 /**
@@ -91,6 +93,7 @@ void Compositor::read_page(std::string filePath) {
 	mdFile.open(filePath.c_str());
 	if (!mdFile) {
 		// TODO: file access error 
+		logMessage("File access error: " + filePath);
 		return;
 	}
 	
@@ -148,7 +151,8 @@ void Compositor::read_page(std::string filePath) {
 	
 	//expose the html version of the md file
 //	pageData.emplace("content", htmlString);
-	this->pageTemplate = htmlString;
+	this->pageContent = htmlString;
+	this->pageContext.emplace("content", htmlString);
 }
 
 /**

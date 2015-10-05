@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
 		std::cin.rdbuf(&fcgiCin);
 		
 		response.page_template(templateString);
-		response.content_path(dataRoot + "index.md");
+		response.content_path(dataRoot + "/index.md");
 		
 // ------------ get data
 		response.get_data(std::string(FCGX_GetParam("QUERY_STRING", request.envp)));
