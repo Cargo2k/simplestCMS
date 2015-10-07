@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.0)
 project(simplestCMS)
-set(SOURCES src/main.cpp src/markdown.cpp src/markdown-tokens.cpp src/Compositor.cpp)
+set(SOURCES src/main.cpp src/markdown.cpp src/markdown-tokens.cpp src/Compositor.cpp src/option.cpp)
 
 #setup the binaries
 add_executable(simplestCMS ${SOURCES})
@@ -21,6 +21,15 @@ endif()
 #	add_definitions(${LIBXML2_CFLAGS_OTHER})
 #	target_link_libraries(simplestCMS ${LIBXML2_LIBRARIES})
 #endif (LIBXML2_FOUND)
+
+#find libconfig++ dependences
+pkg_search_module(LIBCONFIG REQUIRED libconfig++)
+if (LIBCONFIG_FOUND)
+	include_directories(${LIBCONFIG_INCLUDE_DIRS})
+	link_directories(${LIBCONFIG_LIBRARY_DIRS})
+	add_definitions(${LIBCONFIG_CFLAGS_OTHER})
+	target_link_libraries(simplestCMS ${LIBCONFIG_LIBRARIES})
+endif (LIBCONFIG_FOUND)
 
 #find the mustache dependences
 find_package(mstch REQUIRED)

@@ -1,6 +1,6 @@
-#include <Compositor.h>
+#include "Compositor.h"
 
-void logMessage(std::string message);
+void log_message(std::string message); // defined in main.cpp
 
 Compositor::Compositor() {}
 
@@ -8,49 +8,123 @@ Compositor::Compositor() {}
  * returns the complete response for the request
  */
 std::string Compositor::response(void) {
-	return this->http_headers() + this->reply_content(); 
+	return this->http_headers() + this->renderedPage;
 }
 
 /**
  * returns the headers for the requested
- * TODO: should change if 404
  * TODO: should include cookie data
  */ 
 std::string Compositor::http_headers(void) {
-	return "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";
+	return "HTTP/1.1\r\n" + this->statusCode + "\r\nContent-Type: " + this->mimetype +"\r\n\r\n";
 }
 
-/**
- * aggrigates the template and the page contents giving the HTML string of the page
- *
- * @returns an html string of the page requested
- */
-std::string Compositor::reply_content(void) {
-	this->renderedPage = mstch::render(this->pageTemplate,
-									   this->pageContext);
-	return this->renderedPage;
-}
-
-std::string Compositor::page_template(std::string pageTemplate) {
-	this->pageTemplate = pageTemplate;
+std::string Compositor::template_path(std::string path) {
+	this->read_file(path + "/template.mstch", this->pageTemplate);
+	this->pageTemplate;
 	
 	return this->pageTemplate;
 }
 
 std::string Compositor::page_template(void) { return this->pageTemplate; }
 
-std::string Compositor::content_path(std::string path) {
-	this->contentPath = path;
-	this->read_page(contentPath);
+void Compositor::content_request(std::string request) {
+	std::string::size_type extPos;
+	std::string ext;
+	std::string baseFile;
+	uint extGroup = 0;
 	
-	return this->contentPath;
+	// setup our extention mapping
+	const std::vector<Renderable> extMap = {
+		{},
+		{"html", "md"},
+		{"htm", "md"}
+	};
+	
+	if (request[0] != '/')
+		request.insert(0, "/");
+	
+	// check for file ext
+	extPos = request.rfind(".");
+
+	if (extPos == std::string::npos) { // no extention, check to see if is a directory
+		// check dir
+			// check for index 
+				// do file map
+	}
+
+	// map file to pre render format
+	baseFile = request.substr(0, extPos);
+	ext = request.substr(extPos + 1);
+	for (uint i = 0; i < extMap.size(); ++i) {
+		if (extMap[i].to == ext) {
+			extGroup = i;
+		}
+		if (extGroup) { break; }
+	}
+	// if we have a render group check both files
+	if (extGroup) {
+		// get the file details
+		FileStat rendered = (FileStat(this->webRoot + baseFile + "." + extMap[extGroup].to));
+		FileStat data = (FileStat(this->dataRoot + baseFile + "." + extMap[extGroup].from));
+		this->file_check(rendered);
+		this->file_check(data);
+		// check change times
+		if (rendered.modified && rendered.modified >= data.modified) {
+			// serve the exisiting
+			this->serve_existing(rendered.path);
+		} else if (data.modified) {
+			// render and serve
+			std::string render;
+			this->read_file(data.path, render);
+			// TODO: make this easier to extend render types, adding scss atleast would be nice
+			// TODO: how could i account for a context to render mstch also? 
+			render = this->render_md(render);
+			if (render != "") {
+				this->context_emplace("content", render);
+				this->renderedPage = this->render_mstch(this->pageTemplate, this->pageContext);
+				this->write_file(rendered.path, this->renderedPage);
+				this->serve_existing(rendered.path, &this->renderedPage);
+			}
+		}
+		// if we get here neither file should exist
+		// just returning should force a 404 due to default values
+	} else {
+		// no ext group check for an existing file		
+		FileStat rendered(this->webRoot + baseFile);
+		if (this->file_check(rendered)) {
+			this->serve_existing(rendered.path);
+		} // else file should not exist, return to force 404
+	}
 }
 
-void Compositor::content_emplace(std::string key, std::string val) {
-	this->pageContext.emplace(key, val);
+/**
+ * Check for the existance of a file
+ *
+ * @param path the file to check for
+ * @returns the last modified date, or 0 if the file does not exist
+ */
+bool Compositor::file_check(FileStat& target) {
+	struct stat statRes;
+	if (stat(target.path.c_str(), &statRes) != 0) {
+		target.modified = 0;
+		target.directory = false;
+		log_message("Could not stat: " + target.path);
+		switch (errno) { // stat failure 
+		case (EACCES):
+			log_message("Permissions Error accessing: " + target.path);
+			break;
+		}
+		return false;
+	}
+	if (S_ISDIR(statRes.st_mode)) {
+		target.directory = true;
+	} else {
+		target.directory = false;
+	}
+	target.modified = statRes.st_mtime;
+	return true;
 }
-
-std::string Compositor::page_content(void) { return this->pageContent; }
 
 StrMap Compositor::cookie_data(std::string cookieData) {
 	this->formatCookieData(this->cookie, cookieData);
@@ -69,90 +143,170 @@ StrMap Compositor::post_data(void) { return this->post; }
 
 StrMap Compositor::get_data(std::string getData) {
 	formatGetData(this->get, getData);
-	
+	for (auto& getField : this->get) {
+		if (getField.first == "request") {
+			this->content_request(getField.second);
+			break;
+		}
+	}
+
 	return this->get;
 }
 
 StrMap Compositor::get_data(void) { return this->get; }
 
-/**
- * reads in a file, and processes it thourgh cpp-markdown
+std::string Compositor::content_path(std::string path) {
+	this->contentPath = path;
+	return this->contentPath;
+}
+
+std::string Compositor::content_path() {
+	return this->contentPath;
+}
+
+std::string Compositor::data_path(std::string path) {
+	this->dataRoot = path;
+	return this->dataRoot;
+}
+
+std::string Compositor::web_path(void) { return this->dataRoot; }
+
+std::string Compositor::web_path(std::string path) {
+	this->webRoot = path;
+	return this->webRoot;
+}
+
+std::string Compositor::data_path(void) { return this->dataRoot; }
+
+/** renders an html string from a string containing mstch template and a mstch::map containing a variable context
  *
- * @param filePath the path of the file to load
+ * @param rawString a string containting an mstch template
+ * @param contextMap the context to render in the template
+ * @returns an html string
  */
-void Compositor::read_page(std::string filePath) {
+std::string Compositor::render_mstch(std::string rawString, mstch::map contextMap) {
+	return mstch::render(rawString, contextMap);
+} 
+
+
+/**
+ * converts a string from md to html, extracts html style comments, and checks the comments for values formatted to be passed to the context
+ *
+ * @param path a file path in relation to the OS
+ */
+std::string Compositor::render_md(std::string rawString) {	
 	markdown::Document mdData;
-	std::ifstream mdFile;
 	std::stringstream mdStream;
-	std::string htmlString;
 	std::string lineBuf;
-	std::string fileBuf;
+	std::string retVal;
 	std::string::size_type commentBegin;
 	std::string::size_type commentEnd;
-		
-	mdFile.open(filePath.c_str());
-	if (!mdFile) {
-		// TODO: file access error 
-		logMessage("File access error: " + filePath);
-		return;
-	}
-	
-	std::getline(mdFile, lineBuf);
-	while (mdFile.good()) { // copy over mdFile
-		fileBuf += "\n";
-		fileBuf += lineBuf;
 
-		std::getline(mdFile, lineBuf);
-	}
-	
-	commentBegin = fileBuf.find("<!--", 0, 4);
+// look for comments in the string
+	commentBegin = rawString.find("<!--", 0, 4);
 	while (commentBegin != std::string::npos) {
-		commentEnd = fileBuf.find("-->", 0, 3);
+		commentEnd = rawString.find("-->", 0, 3);
 		if (commentEnd == std::string::npos) {
 			// TODO: file format errors
-			return;
-		}
-		//check the comment for values to pass through
-		lineBuf = fileBuf.substr(commentBegin + 4, commentEnd - commentBegin - 4);
-		
-		std::string::size_type eqMarker = lineBuf.find("=", 0, 1);
-		while (eqMarker != std::string::npos) {
-			static bool firstMatch = true; 
-			std::string::size_type oStart = lineBuf.find_last_of(" \n\t", eqMarker); // find the word boundry of the option name
-			std::string::size_type vEnd = lineBuf.find_first_of("\n", eqMarker);
-
-			if (oStart != std::string::npos) { //looks like a valid option name
-				std::string option = lineBuf.substr(oStart + 1, eqMarker - oStart - 1);
-				std::string val = lineBuf.substr(eqMarker + 1, vEnd - eqMarker - 1);
-				this->pageContext.emplace(option, val);
+			// remove the comment begin that we didn't find an end for
+			rawString.replace(commentBegin, 4, "");
+			std::string::size_type msgBegin = commentBegin - 10;
+			std::string::size_type msgEnd = commentBegin + 10;
+			if (msgBegin < 0) msgBegin = 0;
+			if (msgEnd > rawString.size()) msgEnd = rawString.size() - 1; 
+			log_message("Could not match comment tag near: " + rawString.substr(msgBegin, msgEnd));
+		} else {
+			//check the comment for context values to pass through
+			lineBuf = rawString.substr(commentBegin + 4, commentEnd - commentBegin - 4);
+			
+			std::string::size_type eqMarker = lineBuf.find("=", 0, 1);
+			while (eqMarker != std::string::npos) {
+				std::string::size_type oStart = lineBuf.find_last_of(" \n\t", eqMarker); // find the word boundry of the option name
+				std::string::size_type vEnd = lineBuf.find_first_of("\n", eqMarker); // find the end of the opion line
+	
+				if (oStart != std::string::npos) { //looks like a valid option name
+					std::string option = lineBuf.substr(oStart + 1, eqMarker - oStart - 1);
+					std::string val = lineBuf.substr(eqMarker + 1, vEnd - eqMarker - 1);
+					this->pageContext.emplace(option, val);
+				}
+				if (vEnd == std::string::npos)
+					break;
+				eqMarker = lineBuf.find("=", vEnd, 1);
 			}
-			if (vEnd == std::string::npos)
-				break;
-			eqMarker = lineBuf.find("=", vEnd, 1);
-			firstMatch = false;
+			//clear out the comment
+			rawString.replace(commentBegin, commentEnd - commentBegin + 3, "");
 		}
-		//clear out the comment
-		fileBuf.replace(commentBegin, commentEnd - commentBegin + 3, "");
-		commentBegin = fileBuf.find("<!--", commentBegin, 4);
+		// check for another comment
+		commentBegin = rawString.find("<!--", commentBegin, 4);
 	}
 	
-	
-	//process the md file
-	mdData.read(fileBuf);
+	//process the md string
+	mdData.read(rawString);
 	mdData.write(mdStream);
 	
 	//prep the data to be exposed to the view
 	std::getline(mdStream, lineBuf); 
 	while (mdStream.good()) {
-		htmlString += "\n";
-		htmlString += lineBuf;
+		retVal += lineBuf;
+		retVal += "\n";
 		std::getline(mdStream, lineBuf); 
 	}
 	
 	//expose the html version of the md file
-//	pageData.emplace("content", htmlString);
-	this->pageContent = htmlString;
-	this->pageContext.emplace("content", htmlString);
+//	this->pageContext.emplace("content", retVal);
+
+	return retVal;
+}
+
+void Compositor::serve_existing(std::string path, std::string* existingPage) {
+// look for an extention to set the mime type off of
+	std::string ext;
+	std::string::size_type pos = path.rfind(".");
+
+// set the mime type
+	if (pos == std::string::npos) {
+		this->mimetype = this->guess_mimetype(path);
+	} else {
+		ext = path.substr(pos + 1, path.size() - pos);
+		if (ext == "js")
+			this->mimetype = "text/javascript";
+		else if (ext == "css")
+			this->mimetype = "text/css";
+		else if (ext == "html")
+			this->mimetype = "text/html";
+		else if (ext == "htm")
+			this->mimetype = "text/html";
+		else 
+			this->mimetype = this->guess_mimetype(path);
+	}
+	
+	this->statusCode = "200 OK";
+	this->content_path(path);
+	if (existingPage == NULL)
+		this->read_file(path, this->renderedPage);
+	else
+		this->renderedPage = *existingPage;
+}
+
+/** uses the cli program file to guess the mime type
+ *
+ * this is a potentialy awful way, but should do for now. file is on most every POSIX based system
+ *
+ * @param path the path of the file to test
+ */
+std::string Compositor::guess_mimetype(std::string path) {
+	std::string cmd = "file -b --mime-type " + path;
+	FILE* pipe = popen(cmd.c_str(), "r");
+	if (!pipe) return "application/octet-stream";
+	char buffer[128];
+	std::string result = "";
+	while (!feof(pipe)) {
+		if (fgets(buffer, 128, pipe) != NULL)
+			result += buffer;
+		}
+	pclose(pipe);
+
+	return result;
 }
 
 /**
@@ -259,4 +413,46 @@ void Compositor::urldecode2(char *dst, const char *src) {
 		}
 	}
 	*dst++ = '\0';
+}
+
+bool Compositor::read_file(std::string path, std::string& dst) {
+	std::ifstream inFile;
+	std::string lineBuf;
+	dst = "";
+	 
+	inFile.open(path);
+	if (!inFile) {
+		// TODO: file access error 
+		log_message("File access error: " + path);
+		return false;
+	}
+
+	std::getline(inFile, lineBuf);
+	while (inFile.good()) { // copy over mdFile
+		dst += "\n";
+		dst += lineBuf;
+
+		std::getline(inFile, lineBuf);
+	}
+	inFile.close();
+	return true;
+}
+
+bool Compositor::write_file(std::string path, std::string src) {
+	std::ofstream oFile;
+	oFile.open(path, std::ofstream::out | std::ofstream::trunc);
+	if (oFile.is_open()) {
+		oFile << src;
+	} else {
+		log_message("failed to write: " + path);
+		return false;
+	}
+ 
+	oFile.close();
+	return true;
+}
+
+
+void Compositor::context_emplace(std::string key, std::string val) {
+	this->pageContext.emplace(key, val);
 }

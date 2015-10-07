@@ -1,47 +1,60 @@
 #include <fcgio.h>
-//#include <stdlib.h>
+
 #include <string>
 #include <fstream>
 #include <iostream>
 #include <map>
 
 #include <mstch/mstch.hpp>
+#include <libconfig.h++>
+
 #include "markdown.h"
-
 #include "Compositor.h"
+#include "option.h"
 
-std::string webRoot = "/var/www/html";
-std::string dataRoot = "/var/www/html-data";
 std::string msgLogPath = "/var/log/simplestCMS/message.log";
+std::string errorLogPath = "/var/log/simplestCMS/error.log";
+int logLevel = 3;
 
-void logMessage(std::string message);
+void log_message(std::string message);
 
 int main(int argc, char** argv) {
 	int counter = 0;
-	std::string templateString;
 	std::streambuf* defaultCout = std::cout.rdbuf();
 	std::streambuf* defaultCin = std::cin.rdbuf();
-	std::ifstream templateFile;
+	HostSetting defaultHost;
+	libconfig::Config cfg;
 	
 	FCGX_Request request;
 	FCGX_Init();
 	FCGX_InitRequest(&request, 0, 0);
 	
-	logMessage(" ------ new run ------");
+	if (!load_config(cfg))
+		return -1;
+
+	cfg.lookupValue("log.error", errorLogPath);
+	cfg.lookupValue("log.message", msgLogPath);
+	cfg.lookupValue("log.level", logLevel);
 	
-	templateFile.open(dataRoot + "/themes/default/template.mstch");
-	if (!templateFile) {
-		std::cerr << "Could not open the site template" << std::endl;
-		return 1;
-	}
+	std::cout << msgLogPath << std::endl;
+
+	cfg.lookupValue("hosts.default.dataPath", defaultHost.dataPath);
+	cfg.lookupValue("hosts.default.htmlPath", defaultHost.htmlPath);
+	cfg.lookupValue("hosts.default.theme.dir", defaultHost.themePath);
+	cfg.lookupValue("hosts.default.theme.name", defaultHost.themeName);
 	
-	while (templateFile.good()) {
-		std::string lineBuf;
-		std::getline(templateFile, lineBuf);
-		templateString += lineBuf;
-		templateString += "\n";
-	}
+	log_message(" ------ new run ------");
+	log_message("Configured as:");
+	log_message("log.error: " + errorLogPath);
+	log_message("log.message: " + msgLogPath);
+	log_message("log.level: " + logLevel);
 	
+	log_message("hosts.default.dataPath: " + defaultHost.dataPath);
+	log_message("hosts.default.htmlPath: " + defaultHost.htmlPath);
+	log_message("hosts.default.theme.dir: " + defaultHost.themePath);
+	log_message("hosts.default.theme.name: " + defaultHost.themeName);
+	
+// wiat for and accept requests
 	while (FCGX_Accept_r(&request) == 0) {
 		Compositor response;
 		StrMap _GET;
@@ -52,8 +65,10 @@ int main(int argc, char** argv) {
 		std::cout.rdbuf(&fcgiCout);
 		std::cin.rdbuf(&fcgiCin);
 		
-		response.page_template(templateString);
-		response.content_path(dataRoot + "/index.md");
+		response.context_emplace("counter", std::to_string(counter));
+		response.template_path(defaultHost.themePath + "/" + defaultHost.themeName);
+		response.data_path(defaultHost.dataPath);
+		response.web_path(defaultHost.htmlPath);
 		
 // ------------ get data
 		response.get_data(std::string(FCGX_GetParam("QUERY_STRING", request.envp)));
@@ -70,8 +85,6 @@ int main(int argc, char** argv) {
 		if (FCGX_GetParam("HTTP_COOKIE", request.envp) != NULL) {
 			response.cookie_data(std::string(FCGX_GetParam("HTTP_COOKIE", request.envp)));
 		}
-
-		response.content_emplace("counter", std::to_string(counter));
 		
 		std::cout << response.response();
 		counter++;
@@ -83,7 +96,7 @@ int main(int argc, char** argv) {
 	return 0;
 }
 
-void logMessage(std::string message) {
+void log_message(std::string message) {
 	std::ofstream msgLog;
 	
 	msgLog.open(msgLogPath.c_str(), std::ofstream::app);
