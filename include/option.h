@@ -6,7 +6,7 @@
 #include <libconfig.h++>
 
 struct HostSetting {
-	std::string dataPath = ;
+	std::string dataPath;
 	std::string htmlPath;
 	std::string themePath;
 	std::string themeName;

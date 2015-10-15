@@ -71,10 +71,16 @@ int main(int argc, char** argv) {
 		response.web_path(defaultHost.htmlPath);
 		
 // ------------ get data
-		response.get_data(std::string(FCGX_GetParam("QUERY_STRING", request.envp)));
+		if (argc > 1) {
+			log_message("Sending request = " + std::string(argv[1]));
+			response.content_request(argv[1]);
+		} else {
+			response.get_data(std::string(FCGX_GetParam("QUERY_STRING", request.envp)));
+		}
 // ------------ post data
-		int postLen = std::atoi(FCGX_GetParam("CONTENT_LENGTH", request.envp));
-		if (postLen) {
+		log_message("Sending Post data");
+		if (FCGX_GetParam("CONTENT_LENGTH", request.envp)) {
+			int postLen = std::atoi(FCGX_GetParam("CONTENT_LENGTH", request.envp));
 			std::string postData;
 			postData.resize(postLen + 1);
 			std::cin.read(&postData[0], postLen);
@@ -82,15 +88,18 @@ int main(int argc, char** argv) {
 		}
 
 // ------------ cookie data
+		log_message("Sending Cookie data");
 		if (FCGX_GetParam("HTTP_COOKIE", request.envp) != NULL) {
 			response.cookie_data(std::string(FCGX_GetParam("HTTP_COOKIE", request.envp)));
 		}
-		
+
 		std::cout << response.response();
+		log_message(response.response());
 		counter++;
+
 		FCGX_Finish_r(&request);
 	}
-	
+
 	std::cin.rdbuf(defaultCin);
 	std::cout.rdbuf(defaultCout);
 	return 0;

@@ -67,11 +67,14 @@ void Compositor::content_request(std::string request) {
 		// get the file details
 		FileStat rendered = (FileStat(this->webRoot + baseFile + "." + extMap[extGroup].to));
 		FileStat data = (FileStat(this->dataRoot + baseFile + "." + extMap[extGroup].from));
+		log_message("Testing for file: " + rendered.path);
+		log_message("Testing for file: " + data.path);
 		this->file_check(rendered);
 		this->file_check(data);
 		// check change times
 		if (rendered.modified && rendered.modified >= data.modified) {
 			// serve the exisiting
+			log_message("serving " + rendered.path);
 			this->serve_existing(rendered.path);
 		} else if (data.modified) {
 			// render and serve
@@ -80,12 +83,13 @@ void Compositor::content_request(std::string request) {
 			// TODO: make this easier to extend render types, adding scss atleast would be nice
 			// TODO: how could i account for a context to render mstch also? 
 			render = this->render_md(render);
+			log_message("serving: " + data.path);
 			if (render != "") {
 				this->context_emplace("content", render);
 				this->renderedPage = this->render_mstch(this->pageTemplate, this->pageContext);
 				this->write_file(rendered.path, this->renderedPage);
 				this->serve_existing(rendered.path, &this->renderedPage);
-			}
+			}// else TODO: there was prolly an error in the syntax of the md file
 		}
 		// if we get here neither file should exist
 		// just returning should force a 404 due to default values
@@ -145,6 +149,7 @@ StrMap Compositor::get_data(std::string getData) {
 	formatGetData(this->get, getData);
 	for (auto& getField : this->get) {
 		if (getField.first == "request") {
+			log_message("Got request = " + getField.second);
 			this->content_request(getField.second);
 			break;
 		}
@@ -186,7 +191,62 @@ std::string Compositor::data_path(void) { return this->dataRoot; }
  */
 std::string Compositor::render_mstch(std::string rawString, mstch::map contextMap) {
 	return mstch::render(rawString, contextMap);
-} 
+}
+
+/**
+ * Extracts context vairables, page scalars, and page arrays from templates
+ *
+ * @param tmplString a string representing a template
+ */
+void Compositor::extract_page_modifiers(std::string& tmplString) {
+	std::string lineBuf;
+	std::string::size_type commentBegin;
+	std::string::size_type commentEnd;
+
+// look for comments in the string
+	commentBegin = tmplString.find("<!--", 0, 4);
+	while (commentBegin != std::string::npos) {
+		commentEnd = tmplString.find("-->", 0, 3);
+		if (commentEnd == std::string::npos) {
+			// TODO: file format errors
+			// remove the comment begining that we didn't find an end for
+			tmplString.replace(commentBegin, 4, "");
+			std::string::size_type msgBegin = commentBegin - 10;
+			std::string::size_type msgEnd = commentBegin + 10;
+			if (msgBegin < 0) msgBegin = 0;
+			if (msgEnd > tmplString.size()) msgEnd = tmplString.size() - 1; 
+			log_message("Could not match comment tag near: " + tmplString.substr(msgBegin, msgEnd));
+		} else {
+			//check the comment for context values to pass through
+			lineBuf = tmplString.substr(commentBegin + 4, commentEnd - commentBegin - 4);
+			
+			std::string::size_type eqMarker = lineBuf.find("=", 0, 1);
+			while (eqMarker != std::string::npos) {
+				std::string::size_type oStart = lineBuf.find_last_of(" \n\t", eqMarker); // find the word boundry of the option name
+				std::string::size_type vEnd = lineBuf.find_first_of("\n", eqMarker); // find the end of the opion line
+	
+				if (oStart != std::string::npos) { //looks like a valid option name
+					std::string option = lineBuf.substr(oStart + 1, eqMarker - oStart - 1);
+					std::string val = lineBuf.substr(eqMarker + 1, vEnd - eqMarker - 1);
+					if(option[0] == '@') {
+						//TODO: push back an array value
+					} else if(option[0] == '$') {
+						//TODO: push back a scalar value
+					} else {
+						this->pageContext.emplace(option, val);
+					}
+				}
+				if (vEnd == std::string::npos)
+					break;
+				eqMarker = lineBuf.find("=", vEnd, 1);
+			}
+			//clear out the comment
+			tmplString.replace(commentBegin, commentEnd - commentBegin + 3, "");
+		}
+		// check for another comment
+		commentBegin = tmplString.find("<!--", commentBegin, 4);
+	}
+}
 
 
 /**
@@ -197,48 +257,11 @@ std::string Compositor::render_mstch(std::string rawString, mstch::map contextMa
 std::string Compositor::render_md(std::string rawString) {	
 	markdown::Document mdData;
 	std::stringstream mdStream;
-	std::string lineBuf;
 	std::string retVal;
-	std::string::size_type commentBegin;
-	std::string::size_type commentEnd;
-
-// look for comments in the string
-	commentBegin = rawString.find("<!--", 0, 4);
-	while (commentBegin != std::string::npos) {
-		commentEnd = rawString.find("-->", 0, 3);
-		if (commentEnd == std::string::npos) {
-			// TODO: file format errors
-			// remove the comment begin that we didn't find an end for
-			rawString.replace(commentBegin, 4, "");
-			std::string::size_type msgBegin = commentBegin - 10;
-			std::string::size_type msgEnd = commentBegin + 10;
-			if (msgBegin < 0) msgBegin = 0;
-			if (msgEnd > rawString.size()) msgEnd = rawString.size() - 1; 
-			log_message("Could not match comment tag near: " + rawString.substr(msgBegin, msgEnd));
-		} else {
-			//check the comment for context values to pass through
-			lineBuf = rawString.substr(commentBegin + 4, commentEnd - commentBegin - 4);
-			
-			std::string::size_type eqMarker = lineBuf.find("=", 0, 1);
-			while (eqMarker != std::string::npos) {
-				std::string::size_type oStart = lineBuf.find_last_of(" \n\t", eqMarker); // find the word boundry of the option name
-				std::string::size_type vEnd = lineBuf.find_first_of("\n", eqMarker); // find the end of the opion line
+	std::string lineBuf;
 	
-				if (oStart != std::string::npos) { //looks like a valid option name
-					std::string option = lineBuf.substr(oStart + 1, eqMarker - oStart - 1);
-					std::string val = lineBuf.substr(eqMarker + 1, vEnd - eqMarker - 1);
-					this->pageContext.emplace(option, val);
-				}
-				if (vEnd == std::string::npos)
-					break;
-				eqMarker = lineBuf.find("=", vEnd, 1);
-			}
-			//clear out the comment
-			rawString.replace(commentBegin, commentEnd - commentBegin + 3, "");
-		}
-		// check for another comment
-		commentBegin = rawString.find("<!--", commentBegin, 4);
-	}
+	this->extract_page_modifiers(rawString);
+	log_message("rawString <<< EOL\n" + rawString + "\nEOL");
 	
 	//process the md string
 	mdData.read(rawString);
@@ -282,10 +305,12 @@ void Compositor::serve_existing(std::string path, std::string* existingPage) {
 	
 	this->statusCode = "200 OK";
 	this->content_path(path);
-	if (existingPage == NULL)
+	if (existingPage == NULL) {
+		log_message("Reading in existing: " + path);
 		this->read_file(path, this->renderedPage);
-	else
+	} else {
 		this->renderedPage = *existingPage;
+	}
 }
 
 /** uses the cli program file to guess the mime type

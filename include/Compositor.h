@@ -91,6 +91,9 @@ void serve_existing(std::string path, std::string* existingPage = NULL);
 	std::string guess_mimetype(std::string path);
 	bool file_check(FileStat& target);
 	
+// extract embeded data from template file
+	void extract_page_modifiers(std::string& tmplString);
+	
 // tools to manage fcgi input data
 	void urldecode2(char *dst, const char *src);
 	void formatGetData(StrMap &map, std::string query);
